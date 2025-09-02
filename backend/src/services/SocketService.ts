@@ -51,6 +51,9 @@ export class SocketService {
     this.io.on('connection', (socket) => {
       console.log(`User ${socket.data.user.username} connected`);
 
+      // Join lobby room for queue updates
+      socket.join('lobby');
+
       // Matchmaking events
       socket.on('join-matchmaking', async () => {
         const user = socket.data.user;
@@ -71,11 +74,18 @@ export class SocketService {
 
         const queueStatus = await MatchmakingService.getQueueStatus();
         socket.emit('matchmaking-joined', queueStatus);
+        
+        // Broadcast updated queue status to all lobby users
+        this.io.to('lobby').emit('queue-status-update', queueStatus);
       });
 
       socket.on('leave-matchmaking', async () => {
         await MatchmakingService.leaveQueue(socket.data.user.id);
         socket.emit('matchmaking-left');
+        
+        // Broadcast updated queue status to all lobby users
+        const queueStatus = await MatchmakingService.getQueueStatus();
+        this.io.to('lobby').emit('queue-status-update', queueStatus);
       });
 
       socket.on('get-queue-status', async () => {
@@ -112,6 +122,20 @@ export class SocketService {
         socket.to(`game-${gameId}`).emit('draw-offered', {
           from: socket.data.user.username
         });
+      });
+
+      socket.on('accept-draw', (data) => {
+        const { gameId } = data;
+        this.io.to(`game-${gameId}`).emit('draw-accepted');
+        this.io.to(`game-${gameId}`).emit('game-over', {
+          result: 'draw',
+          reason: 'agreement'
+        });
+      });
+
+      socket.on('decline-draw', (data) => {
+        const { gameId } = data;
+        socket.to(`game-${gameId}`).emit('draw-declined');
       });
 
       socket.on('resign', async (data) => {
@@ -157,6 +181,10 @@ export class SocketService {
             opponent: { username: player1.username, rating: player1.rating },
             playerColor: player2Color
           });
+
+          // Broadcast updated queue status after match is made
+          const queueStatus = await MatchmakingService.getQueueStatus();
+          this.io.to('lobby').emit('queue-status-update', queueStatus);
         }
       } catch (error) {
         console.error('Matchmaking error:', error);

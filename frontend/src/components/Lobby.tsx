@@ -12,6 +12,8 @@ export const Lobby: React.FC = () => {
   const [inQueue, setInQueue] = useState(false);
   const [queueStatus, setQueueStatus] = useState<QueueStatus>({ playersInQueue: 0, estimatedWaitTime: 0 });
   const [searching, setSearching] = useState(false);
+  const [waitTime, setWaitTime] = useState(0);
+  const [queueStartTime, setQueueStartTime] = useState<Date | null>(null);
   const { state: authState, logout } = useAuth();
   const { socket } = useSocket();
   const navigate = useNavigate();
@@ -24,11 +26,15 @@ export const Lobby: React.FC = () => {
       setInQueue(true);
       setSearching(true);
       setQueueStatus(status);
+      setQueueStartTime(new Date());
+      setWaitTime(0);
     });
 
     socket.on('matchmaking-left', () => {
       setInQueue(false);
       setSearching(false);
+      setQueueStartTime(null);
+      setWaitTime(0);
     });
 
     socket.on('matchmaking-error', (data: { error: string }) => {
@@ -40,11 +46,16 @@ export const Lobby: React.FC = () => {
     socket.on('match-found', (data: { gameId: number; opponent: { username: string; rating: number }; playerColor: string }) => {
       setInQueue(false);
       setSearching(false);
+      setQueueStartTime(null);
       console.log('Match found!', data);
       navigate(`/game/${data.gameId}`);
     });
 
     socket.on('queue-status', (status: QueueStatus) => {
+      setQueueStatus(status);
+    });
+
+    socket.on('queue-status-update', (status: QueueStatus) => {
       setQueueStatus(status);
     });
 
@@ -55,19 +66,22 @@ export const Lobby: React.FC = () => {
       socket.off('matchmaking-error');
       socket.off('match-found');
       socket.off('queue-status');
+      socket.off('queue-status-update');
     };
   }, [socket, navigate]);
 
-  // Poll queue status every 5 seconds when in queue
+  // Timer for tracking actual wait time
   useEffect(() => {
-    if (!socket || !inQueue) return;
+    if (!inQueue || !queueStartTime) return;
 
     const interval = setInterval(() => {
-      socket.emit('get-queue-status');
-    }, 5000);
+      const now = new Date();
+      const elapsedSeconds = Math.floor((now.getTime() - queueStartTime.getTime()) / 1000);
+      setWaitTime(elapsedSeconds);
+    }, 1000);
 
     return () => clearInterval(interval);
-  }, [socket, inQueue]);
+  }, [inQueue, queueStartTime]);
 
   const handleJoinQueue = () => {
     if (!socket) return;
@@ -124,9 +138,9 @@ export const Lobby: React.FC = () => {
             </div>
             <div>
               <p className="text-2xl font-bold text-green-600">
-                {Math.floor(queueStatus.estimatedWaitTime / 60)}:{(queueStatus.estimatedWaitTime % 60).toString().padStart(2, '0')}
+                {Math.floor(waitTime / 60)}:{(waitTime % 60).toString().padStart(2, '0')}
               </p>
-              <p className="text-gray-600">Estimated Wait Time</p>
+              <p className="text-gray-600">{inQueue ? 'Current Wait Time' : 'Wait Time'}</p>
             </div>
           </div>
         </div>
