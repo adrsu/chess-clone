@@ -1,11 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
+import { config } from '../config';
 
 interface QueueStatus {
   playersInQueue: number;
   estimatedWaitTime: number;
+}
+
+interface RecentGame {
+  id: number;
+  opponent: { username: string; rating: number };
+  playerColor: 'white' | 'black';
+  result: 'win' | 'loss' | 'draw' | 'ongoing';
+  status: 'active' | 'completed' | 'abandoned';
+  startedAt: string;
+  endedAt?: string;
+  timeControl: string;
+  duration?: number;
 }
 
 export const Lobby: React.FC = () => {
@@ -14,9 +28,46 @@ export const Lobby: React.FC = () => {
   const [searching, setSearching] = useState(false);
   const [waitTime, setWaitTime] = useState(0);
   const [queueStartTime, setQueueStartTime] = useState<Date | null>(null);
+  const [recentGames, setRecentGames] = useState<RecentGame[]>([]);
+  const [loadingGames, setLoadingGames] = useState(true);
   const { state: authState, logout } = useAuth();
   const { socket } = useSocket();
   const navigate = useNavigate();
+
+  const fetchRecentGames = async () => {
+    try {
+      setLoadingGames(true);
+      const response = await axios.get(`${config.apiUrl}/games/my-games`, {
+        headers: {
+          Authorization: `Bearer ${authState.token}`
+        }
+      });
+      setRecentGames(response.data.slice(0, 5)); // Show only last 5 games
+    } catch (error) {
+      console.error('Error fetching recent games:', error);
+    } finally {
+      setLoadingGames(false);
+    }
+  };
+
+  // Fetch recent games on component mount and when returning to lobby
+  useEffect(() => {
+    if (authState.token) {
+      fetchRecentGames();
+    }
+  }, [authState.token]);
+
+  // Refresh games when user returns to lobby (using page visibility API)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && authState.token) {
+        fetchRecentGames();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [authState.token]);
 
   useEffect(() => {
     if (!socket) return;
@@ -181,10 +232,64 @@ export const Lobby: React.FC = () => {
           )}
         </div>
 
-        {/* Game History (placeholder for future) */}
+        {/* Recent Games */}
         <div className="bg-white rounded-lg shadow-md p-6 mt-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Recent Games</h2>
-          <p className="text-gray-600">No recent games found.</p>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">Recent Games</h2>
+            <button
+              onClick={fetchRecentGames}
+              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+            >
+              Refresh
+            </button>
+          </div>
+          
+          {loadingGames ? (
+            <div className="flex justify-center py-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            </div>
+          ) : recentGames.length === 0 ? (
+            <p className="text-gray-600 text-center py-4">No recent games found. Play your first game!</p>
+          ) : (
+            <div className="space-y-3">
+              {recentGames.map((game) => (
+                <div
+                  key={game.id}
+                  className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+                  onClick={() => navigate(`/game/${game.id}`)}
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-3 h-3 rounded-full ${
+                      game.result === 'win' ? 'bg-green-500' : 
+                      game.result === 'loss' ? 'bg-red-500' : 
+                      game.result === 'draw' ? 'bg-yellow-500' : 'bg-blue-500'
+                    }`}></div>
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        vs {game.opponent.username} ({game.opponent.rating})
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {game.playerColor === 'white' ? '⚪' : '⚫'} • {game.timeControl}
+                        {game.duration && ` • ${Math.floor(game.duration / 60)}:${(game.duration % 60).toString().padStart(2, '0')}`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className={`font-semibold capitalize ${
+                      game.result === 'win' ? 'text-green-600' : 
+                      game.result === 'loss' ? 'text-red-600' : 
+                      game.result === 'draw' ? 'text-yellow-600' : 'text-blue-600'
+                    }`}>
+                      {game.result === 'ongoing' ? 'In Progress' : game.result}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {new Date(game.startedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

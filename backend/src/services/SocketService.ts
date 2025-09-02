@@ -10,6 +10,7 @@ import { GameModel } from '../models/Game';
 export class SocketService {
   private io: SocketIOServer;
   private matchmakingInterval: NodeJS.Timeout | null = null;
+  private activeGames: Map<number, Set<string>> = new Map(); // gameId -> Set of socketIds
 
   constructor(server: Server) {
     this.io = new SocketIOServer(server, {
@@ -97,9 +98,17 @@ export class SocketService {
         const { gameId } = data;
         socket.join(`game-${gameId}`);
         
+        // Track this player in the game
+        if (!this.activeGames.has(gameId)) {
+          this.activeGames.set(gameId, new Set());
+        }
+        this.activeGames.get(gameId)!.add(socket.id);
+        socket.data.currentGameId = gameId;
+        
+        const playerColor = await this.getPlayerColor(gameId, socket.data.user.id);
         socket.emit('game-joined', {
           gameId,
-          playerColor: await this.getPlayerColor(gameId, socket.data.user.id)
+          playerColor
         });
       });
 
@@ -140,16 +149,51 @@ export class SocketService {
 
       socket.on('resign', async (data) => {
         const { gameId } = data;
+        const game = await GameModel.findById(gameId);
+        if (!game) return;
+        
+        const resigningPlayer = socket.data.user;
+        const winner = game.white_player_id === resigningPlayer.id ? 'Black' : 'White';
+        
+        // Update game in database
+        await GameModel.endGame(gameId, winner === 'White' ? 'white_wins' : 'black_wins');
+        
         this.io.to(`game-${gameId}`).emit('game-over', {
-          result: 'resignation',
-          winner: 'opponent'
+          result: winner === 'White' ? 'white_wins' : 'black_wins',
+          winner,
+          reason: 'resignation'
         });
       });
 
       socket.on('disconnect', async () => {
         console.log(`User ${socket.data.user.username} disconnected`);
+        
         // Remove from matchmaking queue if disconnected
         await MatchmakingService.leaveQueue(socket.data.user.id);
+        
+        // Handle game disconnection
+        if (socket.data.currentGameId) {
+          const gameId = socket.data.currentGameId;
+          const gameRoom = this.activeGames.get(gameId);
+          
+          if (gameRoom) {
+            gameRoom.delete(socket.id);
+            
+            // Notify other players in the game
+            socket.to(`game-${gameId}`).emit('opponent-disconnected', {
+              opponentName: socket.data.user.username
+            });
+            
+            // If no players left in game, clean up
+            if (gameRoom.size === 0) {
+              this.activeGames.delete(gameId);
+            }
+          }
+        }
+        
+        // Broadcast updated queue status
+        const queueStatus = await MatchmakingService.getQueueStatus();
+        this.io.to('lobby').emit('queue-status-update', queueStatus);
       });
     });
   }
