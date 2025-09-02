@@ -4,8 +4,10 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { GameService } from './GameService';
 import { MatchmakingService } from './MatchmakingService';
+import { GameTimeoutService } from './GameTimeoutService';
 import { UserModel } from '../models/User';
 import { GameModel } from '../models/Game';
+import redis from '../config/redis';
 
 export class SocketService {
   private io: SocketIOServer;
@@ -106,10 +108,41 @@ export class SocketService {
         socket.data.currentGameId = gameId;
         
         const playerColor = await this.getPlayerColor(gameId, socket.data.user.id);
+        
+        // Get current game state from Redis for resuming
+        const gameData = await redis.hmget(`game:${gameId}`, 
+          'fen', 'turn', 'status'
+        );
+        
+        // Get game and opponent information
+        const game = await GameModel.findById(gameId);
+        let opponentInfo = null;
+        if (game) {
+          const opponentId = game.white_player_id === socket.data.user.id ? game.black_player_id : game.white_player_id;
+          const opponent = await UserModel.findById(opponentId);
+          if (opponent) {
+            opponentInfo = {
+              username: opponent.username,
+              rating: opponent.rating
+            };
+          }
+        }
+
         socket.emit('game-joined', {
           gameId,
-          playerColor
+          playerColor,
+          opponent: opponentInfo,
+          gameState: gameData[0] ? {
+            fen: gameData[0],
+            turn: gameData[1],
+            status: gameData[2]
+          } : null
         });
+
+        // Start timeout for this game if it's active
+        if (game && game.status === 'active') {
+          GameTimeoutService.startGameTimeout(gameId, this.io);
+        }
       });
 
       socket.on('make-move', async (data) => {
@@ -121,6 +154,14 @@ export class SocketService {
             move,
             gameState: result.gameState
           });
+          
+          // Restart timeout for the game (reset the 10-minute timer)
+          if (result.gameState && !result.gameState.isGameOver) {
+            GameTimeoutService.restartTimeoutForMove(gameId, this.io);
+          } else {
+            // Game ended, clear timeout
+            GameTimeoutService.clearGameTimeout(gameId);
+          }
         } else {
           socket.emit('move-error', { error: result.error });
         }
@@ -133,8 +174,19 @@ export class SocketService {
         });
       });
 
-      socket.on('accept-draw', (data) => {
+      socket.on('accept-draw', async (data) => {
         const { gameId } = data;
+        GameTimeoutService.clearGameTimeout(gameId);
+        
+        // Update game in database as draw
+        await GameModel.endGame(gameId, 'draw');
+        
+        // Update Redis
+        await redis.hmset(`game:${gameId}`, {
+          status: 'completed',
+          result: 'draw'
+        });
+        
         this.io.to(`game-${gameId}`).emit('draw-accepted');
         this.io.to(`game-${gameId}`).emit('game-over', {
           result: 'draw',
@@ -155,7 +207,8 @@ export class SocketService {
         const resigningPlayer = socket.data.user;
         const winner = game.white_player_id === resigningPlayer.id ? 'Black' : 'White';
         
-        // Update game in database
+        // Clear timeout and update game in database
+        GameTimeoutService.clearGameTimeout(gameId);
         await GameModel.endGame(gameId, winner === 'White' ? 'white_wins' : 'black_wins');
         
         this.io.to(`game-${gameId}`).emit('game-over', {
@@ -225,6 +278,9 @@ export class SocketService {
             opponent: { username: player1.username, rating: player1.rating },
             playerColor: player2Color
           });
+
+          // Start timeout for the new game
+          GameTimeoutService.startGameTimeout(gameId, this.io);
 
           // Broadcast updated queue status after match is made
           const queueStatus = await MatchmakingService.getQueueStatus();

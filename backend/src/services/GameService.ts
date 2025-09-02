@@ -69,8 +69,17 @@ export class GameService {
         let result = 'draw';
         if (chess.isCheckmate()) {
           result = chess.turn() === 'w' ? 'black_wins' : 'white_wins';
+        } else if (chess.isStalemate() || chess.isThreefoldRepetition() || chess.isInsufficientMaterial()) {
+          result = 'draw';
         }
+        
         await GameModel.endGame(gameId, result);
+        
+        // Update Redis status
+        await redis.hmset(`game:${gameId}`, {
+          status: 'completed',
+          result: result
+        });
       }
 
       return {

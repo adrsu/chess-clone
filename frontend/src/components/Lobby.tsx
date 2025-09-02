@@ -255,7 +255,9 @@ export const Lobby: React.FC = () => {
               {recentGames.map((game) => (
                 <div
                   key={game.id}
-                  className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+                  className={`flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer ${
+                    game.status === 'active' ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
+                  }`}
                   onClick={() => navigate(`/game/${game.id}`)}
                 >
                   <div className="flex items-center space-x-3">
@@ -283,7 +285,7 @@ export const Lobby: React.FC = () => {
                       {game.result === 'ongoing' ? 'In Progress' : game.result}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {new Date(game.startedAt).toLocaleDateString()}
+                      {game.status === 'active' ? 'Click to resume' : new Date(game.startedAt).toLocaleDateString()}
                     </p>
                   </div>
                 </div>
