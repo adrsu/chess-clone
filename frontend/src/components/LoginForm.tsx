@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export const LoginForm: React.FC = () => {
@@ -6,6 +7,7 @@ export const LoginForm: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const { login, state } = useAuth();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,6 +59,14 @@ export const LoginForm: React.FC = () => {
           {state.loading ? 'Logging in...' : 'Login'}
         </button>
       </form>
+      <div className="mt-4 text-center">
+        <button
+          onClick={() => navigate('/register')}
+          className="text-sm text-green-600 hover:text-green-500"
+        >
+          Don't have an account? Create one here
+        </button>
+      </div>
     </div>
   );
 };

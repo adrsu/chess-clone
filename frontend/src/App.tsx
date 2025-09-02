@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SocketProvider } from './contexts/SocketContext';
 import { LoginForm } from './components/LoginForm';
+import { RegistrationForm } from './components/RegistrationForm';
 import { ChessBoard } from './components/ChessBoard';
 // import './App.css';
 
@@ -36,15 +37,16 @@ function App() {
         <div className="App min-h-screen bg-gray-100">
           <Routes>
             <Route path="/login" element={<LoginForm />} />
-            <Route 
-              path="/game" 
+            <Route path="/register" element={<RegistrationForm />} />
+            <Route
+              path="/game"
               element={
                 <ProtectedRoute>
                   <SocketProvider>
                     <GamePage />
                   </SocketProvider>
                 </ProtectedRoute>
-              } 
+              }
             />
             <Route path="/" element={<Navigate to="/game" />} />
           </Routes>

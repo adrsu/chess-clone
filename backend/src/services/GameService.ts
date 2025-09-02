@@ -38,7 +38,7 @@ export class GameService {
         return { success: false, error: 'Game data corrupted' };
       }
       
-      const playerColor = parseInt(whitePlayerId) === playerId ? 'white' : 'black';
+      const playerColor = parseInt(whitePlayerId!) === playerId ? 'white' : 'black';
       
       if (turn !== playerColor) {
         return { success: false, error: 'Not your turn' };
