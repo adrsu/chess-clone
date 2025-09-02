@@ -3,11 +3,13 @@ import { Server } from 'http';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { GameService } from './GameService';
+import { MatchmakingService } from './MatchmakingService';
 import { UserModel } from '../models/User';
 import { GameModel } from '../models/Game';
 
 export class SocketService {
   private io: SocketIOServer;
+  private matchmakingInterval: NodeJS.Timeout | null = null;
 
   constructor(server: Server) {
     this.io = new SocketIOServer(server, {
@@ -19,6 +21,7 @@ export class SocketService {
 
     this.setupMiddleware();
     this.setupEventHandlers();
+    this.startMatchmaking();
   }
 
   private setupMiddleware() {
@@ -47,6 +50,38 @@ export class SocketService {
   private setupEventHandlers() {
     this.io.on('connection', (socket) => {
       console.log(`User ${socket.data.user.username} connected`);
+
+      // Matchmaking events
+      socket.on('join-matchmaking', async () => {
+        const user = socket.data.user;
+        const isAlreadyInQueue = await MatchmakingService.isPlayerInQueue(user.id);
+        
+        if (isAlreadyInQueue) {
+          socket.emit('matchmaking-error', { error: 'Already in queue' });
+          return;
+        }
+
+        await MatchmakingService.joinQueue({
+          id: user.id,
+          username: user.username,
+          rating: user.rating,
+          socketId: socket.id,
+          joinedAt: new Date()
+        });
+
+        const queueStatus = await MatchmakingService.getQueueStatus();
+        socket.emit('matchmaking-joined', queueStatus);
+      });
+
+      socket.on('leave-matchmaking', async () => {
+        await MatchmakingService.leaveQueue(socket.data.user.id);
+        socket.emit('matchmaking-left');
+      });
+
+      socket.on('get-queue-status', async () => {
+        const queueStatus = await MatchmakingService.getQueueStatus();
+        socket.emit('queue-status', queueStatus);
+      });
 
       socket.on('join-game', async (data) => {
         const { gameId } = data;
@@ -87,10 +122,53 @@ export class SocketService {
         });
       });
 
-      socket.on('disconnect', () => {
+      socket.on('disconnect', async () => {
         console.log(`User ${socket.data.user.username} disconnected`);
+        // Remove from matchmaking queue if disconnected
+        await MatchmakingService.leaveQueue(socket.data.user.id);
       });
     });
+  }
+
+  private startMatchmaking() {
+    // Check for matches every 2 seconds
+    this.matchmakingInterval = setInterval(async () => {
+      try {
+        const match = await MatchmakingService.findMatch();
+        if (match) {
+          const { player1, player2, gameId } = match;
+          
+          // Get player colors
+          const game = await GameModel.findById(gameId);
+          if (!game) return;
+          
+          const player1Color = game.white_player_id === player1.id ? 'white' : 'black';
+          const player2Color = game.white_player_id === player2.id ? 'white' : 'black';
+
+          // Notify both players about the match
+          this.io.to(player1.socketId).emit('match-found', {
+            gameId,
+            opponent: { username: player2.username, rating: player2.rating },
+            playerColor: player1Color
+          });
+
+          this.io.to(player2.socketId).emit('match-found', {
+            gameId,
+            opponent: { username: player1.username, rating: player1.rating },
+            playerColor: player2Color
+          });
+        }
+      } catch (error) {
+        console.error('Matchmaking error:', error);
+      }
+    }, 2000);
+  }
+
+  public stopMatchmaking() {
+    if (this.matchmakingInterval) {
+      clearInterval(this.matchmakingInterval);
+      this.matchmakingInterval = null;
+    }
   }
 
   private async getPlayerColor(gameId: number, userId: number): Promise<string> {

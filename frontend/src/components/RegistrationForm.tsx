@@ -22,7 +22,7 @@ export const RegistrationForm: React.FC = () => {
 
     try {
       await register(username, email, password);
-      navigate('/game');
+      navigate('/lobby');
     } catch (error: any) {
       setError(error.response?.data?.error || 'Registration failed');
     }

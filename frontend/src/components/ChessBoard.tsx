@@ -5,18 +5,27 @@ import { useSocket } from '../contexts/SocketContext';
 
 interface ChessBoardProps {
   gameId: number;
-  playerColor: 'white' | 'black';
+  playerColor?: 'white' | 'black';
 }
 
-export const ChessBoard: React.FC<ChessBoardProps> = ({ gameId, playerColor }) => {
+export const ChessBoard: React.FC<ChessBoardProps> = ({ gameId, playerColor: initialPlayerColor }) => {
   const [chess] = useState(new Chess());
   const [position, setPosition] = useState(chess.fen());
-  const [gameStatus, setGameStatus] = useState('');
+  const [gameStatus, setGameStatus] = useState('Connecting to game...');
+  const [playerColor, setPlayerColor] = useState<'white' | 'black'>(initialPlayerColor || 'white');
+  const [gameJoined, setGameJoined] = useState(false);
   const { socket } = useSocket();
 
   useEffect(() => {
     if (socket) {
       socket.emit('join-game', { gameId });
+
+      socket.on('game-joined', ({ gameId: joinedGameId, playerColor: assignedColor }) => {
+        console.log('Joined game:', joinedGameId, 'as', assignedColor);
+        setPlayerColor(assignedColor);
+        setGameJoined(true);
+        updateGameStatus();
+      });
 
       socket.on('move-made', ({ move, gameState }) => {
         chess.load(gameState.fen);
@@ -30,11 +39,13 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({ gameId, playerColor }) =
 
       socket.on('move-error', ({ error }) => {
         console.error('Move error:', error);
+        setGameStatus(`Move error: ${error}`);
       });
     }
 
     return () => {
       if (socket) {
+        socket.off('game-joined');
         socket.off('move-made');
         socket.off('game-over');
         socket.off('move-error');
@@ -57,6 +68,16 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({ gameId, playerColor }) =
   };
 
   const onDrop = (sourceSquare: string, targetSquare: string) => {
+    // Check if it's the player's turn
+    const currentTurn = chess.turn();
+    const isPlayerTurn = (currentTurn === 'w' && playerColor === 'white') || 
+                        (currentTurn === 'b' && playerColor === 'black');
+    
+    if (!isPlayerTurn) {
+      setGameStatus(`Not your turn! It's ${currentTurn === 'w' ? 'White' : 'Black'}'s turn`);
+      return false;
+    }
+
     try {
       const move = chess.move({
         from: sourceSquare,
@@ -66,10 +87,8 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({ gameId, playerColor }) =
 
       if (move === null) return false;
 
-      setPosition(chess.fen());
-      updateGameStatus();
-
-      // Send move to server
+      // Send move to server first, don't update local state yet
+      // The server will send back the confirmed move
       if (socket) {
         socket.emit('make-move', {
           gameId,
@@ -77,6 +96,8 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({ gameId, playerColor }) =
         });
       }
 
+      // Revert the local move, wait for server confirmation
+      chess.undo();
       return true;
     } catch (error) {
       return false;

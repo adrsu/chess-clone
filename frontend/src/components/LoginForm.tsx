@@ -11,8 +11,10 @@ export const LoginForm: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     try {
       await login(email, password);
+      navigate('/lobby');
     } catch (error: any) {
       setError(error.response?.data?.error || 'Login failed');
     }
