@@ -16,10 +16,25 @@ app.use(helmet({
 }));
 
 // CORS configuration
+const allowedOrigins = process.env.NODE_ENV === 'production' 
+  ? (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:3000').split(',').map(origin => origin.trim())
+  : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+
+console.log('🌐 CORS allowed origins:', allowedOrigins);
+
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' 
-    ? (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:3000').split(',')
-    : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      console.log('✅ CORS: Allowed origin:', origin);
+      return callback(null, true);
+    } else {
+      console.log('❌ CORS: Blocked origin:', origin);
+      return callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
