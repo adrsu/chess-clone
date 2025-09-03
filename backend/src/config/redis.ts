@@ -15,27 +15,27 @@ const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
 });
 
 // Handle Redis connection events
-redis.on('connect', () => {
-  console.log('✅ Redis connected successfully');
-});
+// redis.on('connect', () => {
+//   console.log('✅ Redis connected successfully');
+// });
 
-redis.on('error', (err) => {
-  // Don't spam logs with connection reset errors
-  if (!err.message.includes('ECONNRESET')) {
-    console.error('❌ Redis connection error:', err.message);
-  }
-});
+// redis.on('error', (err) => {
+//   // Don't spam logs with connection reset errors
+//   if (!err.message.includes('ECONNRESET')) {
+//     console.error('❌ Redis connection error:', err.message);
+//   }
+// });
 
-redis.on('ready', () => {
-  console.log('🚀 Redis is ready to accept commands');
-});
+// redis.on('ready', () => {
+//   console.log('🚀 Redis is ready to accept commands');
+// });
 
-redis.on('close', () => {
-  console.log('🔌 Redis connection closed');
-});
+// redis.on('close', () => {
+//   console.log('🔌 Redis connection closed');
+// });
 
-redis.on('reconnecting', () => {
-  console.log('🔄 Redis reconnecting...');
-});
+// redis.on('reconnecting', () => {
+//   console.log('🔄 Redis reconnecting...');
+// });
 
 export default redis;
