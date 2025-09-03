@@ -1,0 +1,32 @@
+# Render Blueprint for Chess Clone Backend
+services:
+  - type: web
+    name: chess-backend
+    env: node
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false  # Set in Render dashboard
+      - key: REDIS_URL
+        sync: false  # Set in Render dashboard
+      - key: JWT_SECRET
+        sync: false  # Set in Render dashboard
+      - key: FRONTEND_URL
+        sync: false  # Set in Render dashboard
+      - key: CORS_ORIGINS
+        sync: false  # Set in Render dashboard
+      - key: PORT
+        value: 5000
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX
+        value: 100
+    plan: starter  # Free tier
+    region: oregon  # Choose closest to your users
+    buildFilter:
+      paths:
+      - backend/**
