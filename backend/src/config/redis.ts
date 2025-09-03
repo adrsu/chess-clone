@@ -15,8 +15,8 @@ try {
     maxRetriesPerRequest: 1,
     enableReadyCheck: false,
     lazyConnect: true,
-    connectTimeout: 3000,
-    commandTimeout: 2000, // Shorter timeout to fail fast
+    connectTimeout: 10000, // Increased for production
+    commandTimeout: process.env.NODE_ENV === 'production' ? 10000 : 2000, // Higher timeout for production
     family: 4,
     reconnectOnError: () => false, // Disable auto-reconnect on error
   });
