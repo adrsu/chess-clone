@@ -1,49 +1,72 @@
 import Redis from 'ioredis';
 
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-  maxRetriesPerRequest: 3,
-  enableReadyCheck: false,
-  lazyConnect: true,
-  connectTimeout: 10000,
-  commandTimeout: 5000,
-  keepAlive: 30000,
-  family: 4,
-  reconnectOnError: (err: Error) => {
-    const targetErrors = ['READONLY', 'ECONNRESET', 'EPIPE'];
-    return targetErrors.some(target => err.message.includes(target));
-  },
-});
+// Create Redis connection with better error handling
+let redis: Redis;
+
+try {
+  const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  console.log('📡 Connecting to Redis:', redisUrl.replace(/:[^:]*@/, ':***@')); // Hide password in logs
+  
+  redis = new Redis(redisUrl, {
+    maxRetriesPerRequest: 2,
+    enableReadyCheck: false,
+    lazyConnect: true,
+    connectTimeout: 5000,
+    commandTimeout: 3000,
+    family: 4,
+    reconnectOnError: () => false, // Disable auto-reconnect on error
+  });
+} catch (error) {
+  console.error('❌ Failed to create Redis client:', error);
+  // Create a mock Redis client that always fails gracefully
+  redis = {} as Redis;
+}
 
 // Handle Redis connection events - MUST handle error to prevent crashes
-redis.on('connect', () => {
-  console.log('✅ Redis connected successfully');
-});
+if (redis && typeof redis.on === 'function') {
+  let lastLogTime = 0;
+  const LOG_THROTTLE_MS = 30000; // Only log every 30 seconds
 
-redis.on('error', (err: any) => {
-  // Handle ALL errors to prevent unhandled error events
-  console.error('❌ Redis error (handled):', err.code || err.message);
-  
-  // Don't crash the app on Redis errors
-  if (err.code === 'ECONNRESET' || err.code === 'EPIPE') {
-    console.log('🔄 Redis connection will retry automatically');
-  }
-});
+  redis.on('connect', () => {
+    const now = Date.now();
+    if (now - lastLogTime > LOG_THROTTLE_MS) {
+      console.log('✅ Redis connected');
+      lastLogTime = now;
+    }
+  });
 
-redis.on('ready', () => {
-  console.log('🚀 Redis is ready to accept commands');
-});
+  redis.on('error', (err: any) => {
+    // Handle ALL errors to prevent unhandled error events
+    const now = Date.now();
+    if (now - lastLogTime > LOG_THROTTLE_MS) {
+      console.error('❌ Redis connection issues (handled) - app continues without Redis');
+      lastLogTime = now;
+    }
+    // Critical: Don't crash the app
+  });
 
-redis.on('close', () => {
-  console.log('🔌 Redis connection closed');
-});
+  redis.on('ready', () => {
+    const now = Date.now();
+    if (now - lastLogTime > LOG_THROTTLE_MS) {
+      console.log('🚀 Redis ready');
+      lastLogTime = now;
+    }
+  });
 
-redis.on('reconnecting', (ms: number) => {
-  console.log(`🔄 Redis reconnecting in ${ms}ms...`);
-});
+  redis.on('close', () => {
+    // Silent - too much noise
+  });
 
-redis.on('end', () => {
-  console.log('🔚 Redis connection ended');
-});
+  redis.on('reconnecting', () => {
+    // Silent - too much noise  
+  });
+
+  redis.on('end', () => {
+    console.log('🔚 Redis connection ended');
+  });
+} else {
+  console.log('⚠️  Redis disabled - running in offline mode');
+}
 
 // Create a wrapper with fallback for when Redis is unavailable
 export const safeRedis = {
