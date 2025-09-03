@@ -1,13 +1,13 @@
 import { Chess } from 'chess.js';
 import { GameModel } from '../models/Game';
-import redis from '../config/redis';
+import { safeRedis } from '../config/redis';
 
 export class GameService {
   static async createGame(whitePlayerId: number, blackPlayerId: number): Promise<number> {
     const game = await GameModel.create(whitePlayerId, blackPlayerId);
     
     // Store active game in Redis
-    await redis.hset(`game:${game.id}`, {
+    await safeRedis.hset(`game:${game.id}`, {
       white_player_id: whitePlayerId,
       black_player_id: blackPlayerId,
       fen: new Chess().fen(),
@@ -24,7 +24,7 @@ export class GameService {
     error?: string;
   }> {
     try {
-      const gameData = await redis.hmget(`game:${gameId}`, 
+      const gameData = await safeRedis.hmget(`game:${gameId}`, 
         'fen', 'turn', 'white_player_id', 'black_player_id', 'status'
       );
       
@@ -56,7 +56,7 @@ export class GameService {
       const isGameOver = chess.isGameOver();
 
       // Update Redis
-      await redis.hmset(`game:${gameId}`, {
+      await safeRedis.hmset(`game:${gameId}`, {
         fen: newFen,
         turn: newTurn,
         status: isGameOver ? 'completed' : 'active'
@@ -76,7 +76,7 @@ export class GameService {
         await GameModel.endGame(gameId, result);
         
         // Update Redis status
-        await redis.hmset(`game:${gameId}`, {
+        await safeRedis.hmset(`game:${gameId}`, {
           status: 'completed',
           result: result
         });

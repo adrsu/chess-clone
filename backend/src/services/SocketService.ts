@@ -7,7 +7,7 @@ import { MatchmakingService } from './MatchmakingService';
 import { GameTimeoutService } from './GameTimeoutService';
 import { UserModel } from '../models/User';
 import { GameModel } from '../models/Game';
-import redis from '../config/redis';
+import { safeRedis } from '../config/redis';
 
 export class SocketService {
   private io: SocketIOServer;
@@ -110,7 +110,7 @@ export class SocketService {
         const playerColor = await this.getPlayerColor(gameId, socket.data.user.id);
         
         // Get current game state from Redis for resuming
-        const gameData = await redis.hmget(`game:${gameId}`, 
+        const gameData = await safeRedis.hmget(`game:${gameId}`, 
           'fen', 'turn', 'status'
         );
         
@@ -182,7 +182,7 @@ export class SocketService {
         await GameModel.endGame(gameId, 'draw');
         
         // Update Redis
-        await redis.hmset(`game:${gameId}`, {
+        await safeRedis.hmset(`game:${gameId}`, {
           status: 'completed',
           result: 'draw'
         });

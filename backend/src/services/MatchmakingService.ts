@@ -1,4 +1,4 @@
-import redis from '../config/redis';
+import { safeRedis } from '../config/redis';
 import { GameService } from './GameService';
 
 interface WaitingPlayer {
@@ -15,13 +15,13 @@ export class MatchmakingService {
 
   static async joinQueue(player: WaitingPlayer): Promise<void> {
     // Add player to queue
-    await redis.zadd(this.QUEUE_KEY, Date.now(), player.id);
+    await safeRedis.zadd(this.QUEUE_KEY, Date.now(), player.id.toString());
     
     // Store player details
-    await redis.hset(`${this.PLAYER_PREFIX}${player.id}`, {
-      id: player.id,
+    await safeRedis.hset(`${this.PLAYER_PREFIX}${player.id}`, {
+      id: player.id.toString(),
       username: player.username,
-      rating: player.rating,
+      rating: player.rating.toString(),
       socketId: player.socketId,
       joinedAt: player.joinedAt.toISOString()
     });
@@ -31,25 +31,25 @@ export class MatchmakingService {
 
   static async leaveQueue(playerId: number): Promise<void> {
     // Remove from queue
-    await redis.zrem(this.QUEUE_KEY, playerId);
+    await safeRedis.zrem(this.QUEUE_KEY, playerId.toString());
     
     // Remove player details
-    await redis.del(`${this.PLAYER_PREFIX}${playerId}`);
+    await safeRedis.del(`${this.PLAYER_PREFIX}${playerId}`);
 
     console.log(`Player ${playerId} left matchmaking queue`);
   }
 
   static async findMatch(): Promise<{ player1: WaitingPlayer; player2: WaitingPlayer; gameId: number } | null> {
     // Get oldest two players from queue
-    const playerIds = await redis.zrange(this.QUEUE_KEY, 0, 1);
+    const playerIds = await safeRedis.zrange(this.QUEUE_KEY, 0, 1);
     
     if (playerIds.length < 2) {
       return null;
     }
 
     // Get player details
-    const player1Data = await redis.hgetall(`${this.PLAYER_PREFIX}${playerIds[0]}`);
-    const player2Data = await redis.hgetall(`${this.PLAYER_PREFIX}${playerIds[1]}`);
+    const player1Data = await safeRedis.hgetall(`${this.PLAYER_PREFIX}${playerIds[0]}`);
+    const player2Data = await safeRedis.hgetall(`${this.PLAYER_PREFIX}${playerIds[1]}`);
 
     if (!player1Data.id || !player2Data.id) {
       // Clean up corrupted data
@@ -91,7 +91,7 @@ export class MatchmakingService {
   }
 
   static async getQueueStatus(): Promise<{ playersInQueue: number; estimatedWaitTime: number }> {
-    const queueLength = await redis.zcard(this.QUEUE_KEY);
+    const queueLength = await safeRedis.zcard(this.QUEUE_KEY);
     
     // Simple estimate: assume 30 seconds per player ahead in queue
     const estimatedWaitTime = Math.max(0, (queueLength - 1)) * 30;
@@ -103,7 +103,7 @@ export class MatchmakingService {
   }
 
   static async isPlayerInQueue(playerId: number): Promise<boolean> {
-    const score = await redis.zscore(this.QUEUE_KEY, playerId);
+    const score = await safeRedis.zscore(this.QUEUE_KEY, playerId.toString());
     return score !== null;
   }
 }

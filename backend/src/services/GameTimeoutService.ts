@@ -1,5 +1,5 @@
 import { GameModel } from '../models/Game';
-import redis from '../config/redis';
+import { safeRedis } from '../config/redis';
 
 export class GameTimeoutService {
   private static readonly GAME_TIMEOUT = 10 * 60 * 1000; // 10 minutes in milliseconds
@@ -41,7 +41,7 @@ export class GameTimeoutService {
       }
 
       // Check Redis for game state
-      const gameData = await redis.hmget(`game:${gameId}`, 'status');
+      const gameData = await safeRedis.hmget(`game:${gameId}`, 'status');
       if (!gameData[0] || gameData[0] !== 'active') {
         console.log(`Game ${gameId} is not active in Redis, skipping timeout`);
         this.clearGameTimeout(gameId);
@@ -54,7 +54,7 @@ export class GameTimeoutService {
       await GameModel.endGame(gameId, 'draw');
 
       // Update Redis
-      await redis.hmset(`game:${gameId}`, {
+      await safeRedis.hmset(`game:${gameId}`, {
         status: 'completed',
         result: 'draw'
       });
