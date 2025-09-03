@@ -72,6 +72,30 @@ if (redis && typeof redis.on === 'function') {
   console.log('⚠️  Redis disabled - running in offline mode');
 }
 
+// Track Redis health status
+let redisHealthy = true;
+let lastHealthCheck = 0;
+const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
+
+async function checkRedisHealth(): Promise<boolean> {
+  const now = Date.now();
+  if (now - lastHealthCheck < HEALTH_CHECK_INTERVAL) {
+    return redisHealthy;
+  }
+  
+  try {
+    await redis.ping();
+    redisHealthy = true;
+    lastHealthCheck = now;
+    return true;
+  } catch (error) {
+    redisHealthy = false;
+    lastHealthCheck = now;
+    console.warn('Redis health check failed - disabling Redis operations temporarily');
+    return false;
+  }
+}
+
 // Create a wrapper with fallback for when Redis is unavailable
 export const safeRedis = {
   async get(key: string): Promise<string | null> {
@@ -111,15 +135,22 @@ export const safeRedis = {
   },
   
   async zrange(key: string, start: number, stop: number): Promise<string[]> {
+    // Quick health check - if Redis is known to be unhealthy, don't even try
+    if (!await checkRedisHealth()) {
+      return []; // Return empty array immediately if Redis is unhealthy
+    }
+    
     try {
-      // Add timeout wrapper for extra protection
+      // Shorter timeout since we know Redis is healthy
       const timeoutPromise = new Promise<string[]>((_, reject) => {
-        setTimeout(() => reject(new Error('Redis operation timeout')), 8000);
+        setTimeout(() => reject(new Error('Redis operation timeout')), 3000);
       });
       
       const redisPromise = redis.zrange(key, start, stop);
       return await Promise.race([redisPromise, timeoutPromise]);
     } catch (error) {
+      // Mark Redis as unhealthy after failure
+      redisHealthy = false;
       console.warn('Redis ZRANGE failed, returning empty array:', error instanceof Error ? error.message : 'Unknown error');
       return []; // Always return empty array so matchmaking can continue
     }
