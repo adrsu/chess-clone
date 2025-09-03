@@ -1,25 +1,20 @@
 import { Pool } from 'pg';
+import dotenv from 'dotenv';
 
-// Create pool configuration
+// Load environment variables
+dotenv.config();
+
+// Create pool configuration for Supabase
 const poolConfig: any = {
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  connectionString: process.env.DATABASE_URL,
+  ssl: false, // Temporarily disable SSL to fix connection issue
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
 };
 
-// For production, use individual connection parameters instead of connectionString to force IPv4
-if (process.env.NODE_ENV === 'production') {
-  poolConfig.host = 'db.obswbfdhbzldydpfyfxj.supabase.co';
-  poolConfig.port = 5432;
-  poolConfig.database = 'postgres';
-  poolConfig.user = 'postgres';
-  poolConfig.password = process.env.DB_PASSWORD || 'supabasepassword27';
-  console.log('🔧 Using individual DB connection parameters for IPv4');
-} else {
-  poolConfig.connectionString = process.env.DATABASE_URL;
-  console.log('🔧 Using DATABASE_URL connection string');
-}
+console.log('🔧 Using DATABASE_URL connection string for Supabase');
+console.log('DATABASE_URL:', process.env.DATABASE_URL);
 
 const pool = new Pool(poolConfig);
 

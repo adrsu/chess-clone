@@ -1,4 +1,8 @@
 import Redis from 'ioredis';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
 
 // Create Redis connection with better error handling
 let redis: Redis;
