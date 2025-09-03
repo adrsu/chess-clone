@@ -11,14 +11,14 @@ try {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
   console.log('📡 Connecting to Redis:', redisUrl.replace(/:[^:]*@/, ':***@')); // Hide password in logs
   
+  const isProduction = process.env.NODE_ENV === 'production';
   redis = new Redis(redisUrl, {
-    maxRetriesPerRequest: 1,
+    maxRetriesPerRequest: isProduction ? 3 : 1, // More retries in production
     enableReadyCheck: false,
     lazyConnect: true,
-    connectTimeout: 10000, // Increased for production
-    commandTimeout: process.env.NODE_ENV === 'production' ? 10000 : 2000, // Higher timeout for production
+    commandTimeout: isProduction ? 15000 : 2000, // Much longer for production
     family: 4,
-    reconnectOnError: () => false, // Disable auto-reconnect on error
+    reconnectOnError: () => false,
   });
 } catch (error) {
   console.error('❌ Failed to create Redis client:', error);
@@ -112,10 +112,16 @@ export const safeRedis = {
   
   async zrange(key: string, start: number, stop: number): Promise<string[]> {
     try {
-      return await redis.zrange(key, start, stop);
+      // Add timeout wrapper for extra protection
+      const timeoutPromise = new Promise<string[]>((_, reject) => {
+        setTimeout(() => reject(new Error('Redis operation timeout')), 8000);
+      });
+      
+      const redisPromise = redis.zrange(key, start, stop);
+      return await Promise.race([redisPromise, timeoutPromise]);
     } catch (error) {
-      console.warn('Redis ZRANGE failed:', error);
-      return [];
+      console.warn('Redis ZRANGE failed, returning empty array:', error instanceof Error ? error.message : 'Unknown error');
+      return []; // Always return empty array so matchmaking can continue
     }
   },
   
