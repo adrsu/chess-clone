@@ -37,9 +37,10 @@ router.post('/register', [
         rating: user.rating
       }
     });
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ error: 'Server error 1' });
+  } catch (error: any) {
+    console.error('❌ Registration error:', error.message || error);
+    console.error('❌ Full error stack:', error.stack);
+    res.status(500).json({ error: 'Database connection failed - please try again later' });
   }
 });
 

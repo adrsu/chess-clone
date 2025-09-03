@@ -69,9 +69,25 @@ app.use(limiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/games', gameRoutes);
 
-// Health check
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+// Health check endpoint with database connection test
+app.get('/health', async (req, res) => {
+  try {
+    const pool = require('./config/database').default;
+    await pool.query('SELECT 1');
+    res.json({ 
+      status: 'OK', 
+      database: 'connected',
+      timestamp: new Date().toISOString() 
+    });
+  } catch (error: any) {
+    console.error('❌ Health check - database error:', error.message);
+    res.status(503).json({ 
+      status: 'ERROR', 
+      database: 'disconnected',
+      error: error.message,
+      timestamp: new Date().toISOString() 
+    });
+  }
 });
 
 export default app;

@@ -13,13 +13,23 @@ export interface User {
 
 export class UserModel {
   static async create(username: string, email: string, password: string): Promise<User> {
-    const hashedPassword = await bcrypt.hash(password, 12);
-    const result = await pool.query(
-      `INSERT INTO users (username, email, password_hash) 
-       VALUES ($1, $2, $3) RETURNING *`,
-      [username, email, hashedPassword]
-    );
-    return result.rows[0];
+    try {
+      console.log('🔐 Creating user:', { username, email });
+      const hashedPassword = await bcrypt.hash(password, 12);
+      console.log('✅ Password hashed successfully');
+      
+      const result = await pool.query(
+        `INSERT INTO users (username, email, password_hash) 
+         VALUES ($1, $2, $3) RETURNING *`,
+        [username, email, hashedPassword]
+      );
+      
+      console.log('✅ User created successfully:', result.rows[0].id);
+      return result.rows[0];
+    } catch (error: any) {
+      console.error('❌ User creation failed:', error.message);
+      throw error;
+    }
   }
 
   static async findByEmail(email: string): Promise<User | null> {

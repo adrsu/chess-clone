@@ -1,18 +1,27 @@
 import { Pool } from 'pg';
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+// Create pool configuration
+const poolConfig: any = {
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 20, // Maximum number of clients in the pool
-  idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-  connectionTimeoutMillis: 10000, // Increased timeout
-  // Force IPv4 to avoid IPv6 connection issues on Render
-  host: process.env.NODE_ENV === 'production' ? 'db.obswbfdhbzldydpfyfxj.supabase.co' : undefined,
-  port: process.env.NODE_ENV === 'production' ? 5432 : undefined,
-  database: process.env.NODE_ENV === 'production' ? 'postgres' : undefined,
-  user: process.env.NODE_ENV === 'production' ? 'postgres' : undefined,
-  password: process.env.NODE_ENV === 'production' ? process.env.DB_PASSWORD : undefined,
-});
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+};
+
+// For production, use individual connection parameters instead of connectionString to force IPv4
+if (process.env.NODE_ENV === 'production') {
+  poolConfig.host = 'db.obswbfdhbzldydpfyfxj.supabase.co';
+  poolConfig.port = 5432;
+  poolConfig.database = 'postgres';
+  poolConfig.user = 'postgres';
+  poolConfig.password = process.env.DB_PASSWORD || 'supabasepassword27';
+  console.log('🔧 Using individual DB connection parameters for IPv4');
+} else {
+  poolConfig.connectionString = process.env.DATABASE_URL;
+  console.log('🔧 Using DATABASE_URL connection string');
+}
+
+const pool = new Pool(poolConfig);
 
 // Handle pool errors - don't crash the app
 pool.on('error', (err) => {

@@ -8,11 +8,11 @@ try {
   console.log('📡 Connecting to Redis:', redisUrl.replace(/:[^:]*@/, ':***@')); // Hide password in logs
   
   redis = new Redis(redisUrl, {
-    maxRetriesPerRequest: 2,
+    maxRetriesPerRequest: 1,
     enableReadyCheck: false,
     lazyConnect: true,
-    connectTimeout: 5000,
-    commandTimeout: 3000,
+    connectTimeout: 3000,
+    commandTimeout: 2000, // Shorter timeout to fail fast
     family: 4,
     reconnectOnError: () => false, // Disable auto-reconnect on error
   });
