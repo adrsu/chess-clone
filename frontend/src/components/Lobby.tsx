@@ -11,7 +11,7 @@ interface QueueStatus {
 }
 
 interface RecentGame {
-  id: number;
+  id: string;
   opponent: { username: string; rating: number };
   playerColor: 'white' | 'black';
   result: 'win' | 'loss' | 'draw' | 'ongoing';
@@ -94,7 +94,7 @@ export const Lobby: React.FC = () => {
       setSearching(false);
     });
 
-    socket.on('match-found', (data: { gameId: number; opponent: { username: string; rating: number }; playerColor: string }) => {
+    socket.on('match-found', (data: { gameId: string; opponent: { username: string; rating: number }; playerColor: string }) => {
       setInQueue(false);
       setSearching(false);
       setQueueStartTime(null);

@@ -7,12 +7,11 @@ import { MatchmakingService } from './MatchmakingService';
 import { GameTimeoutService } from './GameTimeoutService';
 import { UserModel } from '../models/User';
 import { GameModel } from '../models/Game';
-import { safeRedis } from '../config/redis';
 
 export class SocketService {
   private io: SocketIOServer;
   private matchmakingInterval: NodeJS.Timeout | null = null;
-  private activeGames: Map<number, Set<string>> = new Map(); // gameId -> Set of socketIds
+  private activeGames: Map<string, Set<string>> = new Map(); // gameId -> Set of socketIds
 
   constructor(server: Server) {
     this.io = new SocketIOServer(server, {
@@ -109,10 +108,8 @@ export class SocketService {
         
         const playerColor = await this.getPlayerColor(gameId, socket.data.user.id);
         
-        // Get current game state from Redis for resuming
-        const gameData = await safeRedis.hmget(`game:${gameId}`, 
-          'fen', 'turn', 'status'
-        );
+        // Get current game state from cache for resuming
+        const gameState = await GameService.getGameState(gameId);
         
         // Get game and opponent information
         const game = await GameModel.findById(gameId);
@@ -132,10 +129,10 @@ export class SocketService {
           gameId,
           playerColor,
           opponent: opponentInfo,
-          gameState: gameData[0] ? {
-            fen: gameData[0],
-            turn: gameData[1],
-            status: gameData[2]
+          gameState: gameState ? {
+            fen: gameState.fen,
+            turn: gameState.turn,
+            status: gameState.status
           } : null
         });
 
@@ -181,11 +178,8 @@ export class SocketService {
         // Update game in database as draw
         await GameModel.endGame(gameId, 'draw');
         
-        // Update Redis
-        await safeRedis.hmset(`game:${gameId}`, {
-          status: 'completed',
-          result: 'draw'
-        });
+        // Clean up the completed game from cache
+        GameService.cleanupCompletedGame(gameId);
         
         this.io.to(`game-${gameId}`).emit('draw-accepted');
         this.io.to(`game-${gameId}`).emit('game-over', {
@@ -211,6 +205,9 @@ export class SocketService {
         GameTimeoutService.clearGameTimeout(gameId);
         await GameModel.endGame(gameId, winner === 'White' ? 'white_wins' : 'black_wins');
         
+        // Clean up the completed game from cache
+        GameService.cleanupCompletedGame(gameId);
+        
         this.io.to(`game-${gameId}`).emit('game-over', {
           result: winner === 'White' ? 'white_wins' : 'black_wins',
           winner,
@@ -223,6 +220,9 @@ export class SocketService {
         
         // Remove from matchmaking queue if disconnected
         await MatchmakingService.leaveQueue(socket.data.user.id);
+        
+        // Also clean up by socket ID in case there are orphaned entries
+        MatchmakingService.cleanupDisconnectedPlayer(socket.id);
         
         // Handle game disconnection
         if (socket.data.currentGameId) {
@@ -299,7 +299,7 @@ export class SocketService {
     }
   }
 
-  private async getPlayerColor(gameId: number, userId: number): Promise<string> {
+  private async getPlayerColor(gameId: string, userId: string): Promise<string> {
     // Implementation to determine if user is white or black player
     const game = await GameModel.findById(gameId);
     if (!game) return '';

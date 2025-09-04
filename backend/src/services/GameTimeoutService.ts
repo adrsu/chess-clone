@@ -1,11 +1,11 @@
 import { GameModel } from '../models/Game';
-import { safeRedis } from '../config/redis';
+import { GameService } from './GameService';
 
 export class GameTimeoutService {
   private static readonly GAME_TIMEOUT = 10 * 60 * 1000; // 10 minutes in milliseconds
-  private static timeoutChecks: Map<number, NodeJS.Timeout> = new Map();
+  private static timeoutChecks: Map<string, NodeJS.Timeout> = new Map();
 
-  static startGameTimeout(gameId: number, io: any) {
+  static startGameTimeout(gameId: string, io: any) {
     // Clear any existing timeout for this game
     this.clearGameTimeout(gameId);
 
@@ -21,7 +21,7 @@ export class GameTimeoutService {
     console.log(`Started 10-minute timeout for game ${gameId}`);
   }
 
-  static clearGameTimeout(gameId: number) {
+  static clearGameTimeout(gameId: string) {
     const existingTimeout = this.timeoutChecks.get(gameId);
     if (existingTimeout) {
       clearTimeout(existingTimeout);
@@ -30,20 +30,12 @@ export class GameTimeoutService {
     }
   }
 
-  private static async handleGameTimeout(gameId: number, io: any) {
+  private static async handleGameTimeout(gameId: string, io: any) {
     try {
-      // Check if game is still active
-      const game = await GameModel.findById(gameId);
-      if (!game || game.status !== 'active') {
+      // Check if game is still active in cache first, then database
+      const gameState = await GameService.getGameState(gameId);
+      if (!gameState || gameState.status !== 'active') {
         console.log(`Game ${gameId} is no longer active, skipping timeout`);
-        this.clearGameTimeout(gameId);
-        return;
-      }
-
-      // Check Redis for game state
-      const gameData = await safeRedis.hmget(`game:${gameId}`, 'status');
-      if (!gameData[0] || gameData[0] !== 'active') {
-        console.log(`Game ${gameId} is not active in Redis, skipping timeout`);
         this.clearGameTimeout(gameId);
         return;
       }
@@ -53,11 +45,8 @@ export class GameTimeoutService {
       // Update game status to draw in database
       await GameModel.endGame(gameId, 'draw');
 
-      // Update Redis
-      await safeRedis.hmset(`game:${gameId}`, {
-        status: 'completed',
-        result: 'draw'
-      });
+      // Clean up the completed game from cache
+      GameService.cleanupCompletedGame(gameId);
 
       // Notify players
       io.to(`game-${gameId}`).emit('game-over', {
@@ -74,7 +63,7 @@ export class GameTimeoutService {
     }
   }
 
-  static restartTimeoutForMove(gameId: number, io: any) {
+  static restartTimeoutForMove(gameId: string, io: any) {
     // Restart the timeout when a move is made
     this.startGameTimeout(gameId, io);
   }
@@ -87,7 +76,7 @@ export class GameTimeoutService {
     this.timeoutChecks.clear();
   }
 
-  static getActiveTimeouts(): number[] {
+  static getActiveTimeouts(): string[] {
     return Array.from(this.timeoutChecks.keys());
   }
 }

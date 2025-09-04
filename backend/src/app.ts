@@ -74,9 +74,21 @@ app.get('/health', async (req, res) => {
   try {
     const pool = require('./config/database').default;
     await pool.query('SELECT 1');
+    
+    // Import services to get cache status
+    const { GameService } = require('./services/GameService');
+    const { MatchmakingService } = require('./services/MatchmakingService');
+    
+    const cacheStatus = GameService.getCacheStatus();
+    const queueStatus = await MatchmakingService.getQueueStatus();
+    
     res.json({ 
       status: 'OK', 
       database: 'connected',
+      cache: {
+        activeGames: cacheStatus.activeGames,
+        playersInQueue: queueStatus.playersInQueue
+      },
       timestamp: new Date().toISOString() 
     });
   } catch (error: any) {

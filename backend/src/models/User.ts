@@ -2,7 +2,7 @@ import pool from '../config/database';
 import bcrypt from 'bcryptjs';
 
 export interface User {
-  id: number;
+  id: string;
   username: string;
   email: string;
   password_hash: string;
@@ -37,7 +37,7 @@ export class UserModel {
     return result.rows[0] || null;
   }
 
-  static async findById(id: number): Promise<User | null> {
+  static async findById(id: string): Promise<User | null> {
     const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
     return result.rows[0] || null;
   }
@@ -46,7 +46,7 @@ export class UserModel {
     return bcrypt.compare(password, hashedPassword);
   }
 
-  static async updateRating(userId: number, newRating: number): Promise<void> {
+  static async updateRating(userId: string, newRating: number): Promise<void> {
     await pool.query(
       'UPDATE users SET rating = $1, games_played = games_played + 1 WHERE id = $2',
       [newRating, userId]

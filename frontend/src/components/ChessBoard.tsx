@@ -8,7 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { config } from '../config';
 
 interface ChessBoardProps {
-  gameId: number;
+  gameId: string;
   playerColor?: 'white' | 'black';
 }
 

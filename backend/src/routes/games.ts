@@ -71,12 +71,30 @@ router.get('/my-games', async (req: AuthRequest, res) => {
 
 router.get('/:gameId', async (req: AuthRequest, res) => {
   try {
-    const game = await GameModel.findById(parseInt(req.params.gameId));
+    const gameId = req.params.gameId;
+    console.log(`Fetching game ${gameId} for user ${req.user.id}`);
+    
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(gameId)) {
+      return res.status(400).json({ error: 'Invalid game ID format' });
+    }
+    
+    const game = await GameModel.findById(gameId);
+    console.log(`Game ${gameId} found:`, game ? 'Yes' : 'No');
+    
     if (!game) {
       return res.status(404).json({ error: 'Game not found' });
     }
+    
+    // Check if user is part of this game
+    if (game.white_player_id !== req.user.id && game.black_player_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied to this game' });
+    }
+    
     res.json(game);
   } catch (error) {
+    console.error('Error fetching game:', error);
     res.status(500).json({ error: 'Failed to fetch game' });
   }
 });
